@@ -585,7 +585,6 @@ public class CapacitorUpdaterPlugin extends Plugin {
     } else {
       this.bridge.setServerBasePath(path);
     }
-    this.checkAppReady();
     this.notifyListeners("appReloaded", new JSObject());
     return true;
   }
@@ -1000,21 +999,6 @@ public class CapacitorUpdaterPlugin extends Plugin {
     }
   }
 
-  private void checkAppReady() {
-    try {
-      if (this.appReadyCheck != null) {
-        this.appReadyCheck.interrupt();
-      }
-      this.appReadyCheck = startNewThread(new DeferredNotifyAppReadyCheck());
-    } catch (final Exception e) {
-      Log.e(
-        CapacitorUpdater.TAG,
-        "Failed to start " + DeferredNotifyAppReadyCheck.class.getName(),
-        e
-      );
-    }
-  }
-
   private boolean isValidURL(String urlStr) {
     try {
       URL url = new URL(urlStr);
@@ -1294,87 +1278,6 @@ public class CapacitorUpdaterPlugin extends Plugin {
     }
   }
 
-  private void checkRevert() {
-    // Automatically roll back to fallback version if notifyAppReady has not been called yet
-    final BundleInfo current = this.implementation.getCurrentBundle();
-
-    if (current.isBuiltin()) {
-      Log.i(CapacitorUpdater.TAG, "Built-in bundle is active. Nothing to do.");
-      return;
-    }
-    Log.d(CapacitorUpdater.TAG, "Current bundle is: " + current);
-
-    if (BundleStatus.SUCCESS != current.getStatus()) {
-      Log.e(
-        CapacitorUpdater.TAG,
-        "notifyAppReady was not called, roll back current bundle: " +
-        current.getId()
-      );
-      Log.i(
-        CapacitorUpdater.TAG,
-        "Did you forget to call 'notifyAppReady()' in your Capacitor App code?"
-      );
-      final JSObject ret = new JSObject();
-      ret.put("bundle", current.toJSON());
-      this.notifyListeners("updateFailed", ret);
-      this.implementation.sendStats("update_fail", current.getVersionName());
-      this.implementation.setError(current);
-      this._reset(true);
-      if (
-        CapacitorUpdaterPlugin.this.autoDeleteFailed && !current.isBuiltin()
-      ) {
-        Log.i(
-          CapacitorUpdater.TAG,
-          "Deleting failing bundle: " + current.getVersionName()
-        );
-        try {
-          final Boolean res =
-            this.implementation.delete(current.getId(), false);
-          if (res) {
-            Log.i(
-              CapacitorUpdater.TAG,
-              "Failed bundle deleted: " + current.getVersionName()
-            );
-          }
-        } catch (final IOException e) {
-          Log.e(
-            CapacitorUpdater.TAG,
-            "Failed to delete failed bundle: " + current.getVersionName(),
-            e
-          );
-        }
-      }
-    } else {
-      Log.i(
-        CapacitorUpdater.TAG,
-        "notifyAppReady was called. This is fine: " + current.getId()
-      );
-    }
-  }
-
-  private class DeferredNotifyAppReadyCheck implements Runnable {
-
-    @Override
-    public void run() {
-      try {
-        Log.i(
-          CapacitorUpdater.TAG,
-          "Wait for " +
-          CapacitorUpdaterPlugin.this.appReadyTimeout +
-          "ms, then check for notifyAppReady"
-        );
-        Thread.sleep(CapacitorUpdaterPlugin.this.appReadyTimeout);
-        CapacitorUpdaterPlugin.this.checkRevert();
-        CapacitorUpdaterPlugin.this.appReadyCheck = null;
-      } catch (final InterruptedException e) {
-        Log.i(
-          CapacitorUpdater.TAG,
-          DeferredNotifyAppReadyCheck.class.getName() + " was interrupted."
-        );
-      }
-    }
-  }
-
   public void appMovedToForeground() {
     final BundleInfo current =
       CapacitorUpdaterPlugin.this.implementation.getCurrentBundle();
@@ -1392,7 +1295,6 @@ public class CapacitorUpdaterPlugin extends Plugin {
       Log.i(CapacitorUpdater.TAG, "Auto update is disabled");
       this.sendReadyToJs(current, "disabled");
     }
-    this.checkAppReady();
   }
 
   public void appMovedToBackground() {
