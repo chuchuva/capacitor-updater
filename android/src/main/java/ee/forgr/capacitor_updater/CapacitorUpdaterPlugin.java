@@ -817,29 +817,7 @@ public class CapacitorUpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void notifyAppReady(final PluginCall call) {
-    try {
-      final BundleInfo bundle = this.implementation.getCurrentBundle();
-      this.implementation.setSuccess(bundle, this.autoDeletePrevious);
-      Log.i(
-        CapacitorUpdater.TAG,
-        "Current bundle loaded successfully. ['notifyAppReady()' was called] " +
-        bundle
-      );
-      Log.i(CapacitorUpdater.TAG, "semaphoreReady countDown");
-      this.semaphoreDown();
-      Log.i(CapacitorUpdater.TAG, "semaphoreReady countDown done");
-      final JSObject ret = new JSObject();
-      ret.put("bundle", bundle.toJSON());
-      call.resolve(ret);
-      call.resolve();
-    } catch (final Exception e) {
-      Log.e(
-        CapacitorUpdater.TAG,
-        "Failed to notify app ready state. [Error calling 'notifyAppReady()']",
-        e
-      );
-      call.reject("Failed to commit app ready state.", e);
-    }
+    call.reject("notifyAppReady is not implemented");
   }
 
   @PluginMethod
