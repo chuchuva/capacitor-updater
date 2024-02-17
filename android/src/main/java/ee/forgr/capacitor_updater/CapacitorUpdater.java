@@ -695,7 +695,7 @@ public class CapacitorUpdater {
     Log.i(TAG, "Setting next active bundle: " + id);
     if (this.bundleExists(id)) {
       this.setCurrentBundle(bundle);
-      this.setBundleStatus(id, BundleStatus.PENDING);
+      this.setSuccess(newBundle, /*autoDeletePrevious*/ true);
       this.sendStats("set", newBundle.getVersionName());
       return true;
     }
