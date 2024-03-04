@@ -26,8 +26,6 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
     private var backgroundTaskID: UIBackgroundTaskIdentifier = UIBackgroundTaskIdentifier.invalid
     private var currentVersionNative: Version = "0.0.0"
     private var autoUpdate = false
-    private var appReadyTimeout = 10000
-    private var appReadyCheck: DispatchWorkItem?
     private var resetWhenUpdate = true
     private var directUpdate = false
     private var autoDeleteFailed = false
@@ -57,7 +55,6 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
         directUpdate = getConfig().getBoolean("directUpdate", false)
         updateUrl = getConfig().getString("updateUrl", CapacitorUpdaterPlugin.updateUrlDefault)!
         autoUpdate = getConfig().getBoolean("autoUpdate", true)
-        appReadyTimeout = getConfig().getInt("appReadyTimeout", 10000)
         implementation.timeout = Double(getConfig().getInt("responseTimeout", 20))
         resetWhenUpdate = getConfig().getBoolean("resetWhenUpdate", true)
         let periodCheckDelayValue = getConfig().getInt("periodCheckDelay", 0)
@@ -206,7 +203,6 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
         print("\(self.implementation.TAG) Reloading \(id)")
         if let vc = bridge.viewController as? CAPBridgeViewController {
             vc.setServerBasePath(path: dest.path)
-            self.checkAppReady()
             self.notifyListeners("appReloaded", data: [:])
             return true
         }
@@ -511,53 +507,6 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
         ])
     }
 
-    func checkAppReady() {
-        self.appReadyCheck?.cancel()
-        self.appReadyCheck = DispatchWorkItem(block: {
-            self.DeferredNotifyAppReadyCheck()
-        })
-        print("\(self.implementation.TAG) Wait for \(self.appReadyTimeout) ms, then check for notifyAppReady")
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(self.appReadyTimeout), execute: self.appReadyCheck!)
-    }
-
-    func checkRevert() {
-        // Automatically roll back to fallback version if notifyAppReady has not been called yet
-        let current: BundleInfo = self.implementation.getCurrentBundle()
-        if current.isBuiltin() {
-            print("\(self.implementation.TAG) Built-in bundle is active. Nothing to do.")
-            return
-        }
-
-        print("\(self.implementation.TAG) Current bundle is: \(current.toString())")
-
-        if BundleStatus.SUCCESS.localizedString != current.getStatus() {
-            print("\(self.implementation.TAG) notifyAppReady was not called, roll back current bundle: \(current.toString())")
-            print("\(self.implementation.TAG) Did you forget to call 'notifyAppReady()' in your Capacitor App code?")
-            self.notifyListeners("updateFailed", data: [
-                "bundle": current.toJSON()
-            ])
-            self.implementation.sendStats(action: "update_fail", versionName: current.getVersionName())
-            self.implementation.setError(bundle: current)
-            _ = self._reset(toLastSuccessful: true)
-            if self.autoDeleteFailed && !current.isBuiltin() {
-                print("\(self.implementation.TAG) Deleting failing bundle: \(current.toString())")
-                let res = self.implementation.delete(id: current.getId(), removeInfo: false)
-                if !res {
-                    print("\(self.implementation.TAG) Delete version deleted: \(current.toString())")
-                } else {
-                    print("\(self.implementation.TAG) Failed to delete failed bundle: \(current.toString())")
-                }
-            }
-        } else {
-            print("\(self.implementation.TAG) notifyAppReady was called. This is fine: \(current.toString())")
-        }
-    }
-
-    func DeferredNotifyAppReadyCheck() {
-        self.checkRevert()
-        self.appReadyCheck = nil
-    }
-
     func endBackGroundTask() {
         UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
         self.backgroundTaskID = UIBackgroundTaskIdentifier.invalid
@@ -566,7 +515,6 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
     func sendReadyToJs(current: BundleInfo, msg: String) {
         print("\(self.implementation.TAG) sendReadyToJs")
         DispatchQueue.global().async {
-            self.semaphoreWait(waitTime: self.appReadyTimeout)
             self.notifyListeners("appReady", data: ["bundle": current.toJSON(), "status": msg])
         }
     }
@@ -735,7 +683,6 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
             print("\(self.implementation.TAG) Auto update is disabled")
             self.sendReadyToJs(current: current, msg: "disabled")
         }
-        self.checkAppReady()
     }
 
     @objc func checkForUpdateAfterDelay() {
