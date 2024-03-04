@@ -386,11 +386,7 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
     }
 
     @objc func notifyAppReady(_ call: CAPPluginCall) {
-        self.semaphoreDown()
-        let bundle = self.implementation.getCurrentBundle()
-        self.implementation.setSuccess(bundle: bundle, autoDeletePrevious: self.autoDeletePrevious)
-        print("\(self.implementation.TAG) Current bundle loaded successfully. ['notifyAppReady()' was called] \(bundle.toString())")
-        call.resolve(["bundle": bundle.toJSON()])
+        call.reject("notifyAppReady is not implemented")
     }
 
     @objc func setMultiDelay(_ call: CAPPluginCall) {
