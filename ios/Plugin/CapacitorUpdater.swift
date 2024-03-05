@@ -637,7 +637,7 @@ extension CustomError: LocalizedError {
         }
         if bundleExists(id: id) {
             self.setCurrentBundle(bundle: self.getBundleDirectory(id: id).path)
-            self.setBundleStatus(id: id, status: BundleStatus.PENDING)
+            self.setSuccess(bundle: newBundle, autoDeletePrevious: true)
             self.sendStats(action: "set", versionName: newBundle.getVersionName())
             return true
         }
