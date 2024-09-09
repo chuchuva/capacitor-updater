@@ -12,15 +12,18 @@ package ee.forgr.capacitor_updater;
  * references: http://stackoverflow.com/questions/12471999/rsa-encryption-decryption-in-android
  */
 import android.util.Base64;
+import android.util.Log;
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.MGF1ParameterSpec;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
@@ -43,8 +46,7 @@ public class CryptoCipher {
       PSource.PSpecified.DEFAULT
     );
     cipher.init(Cipher.DECRYPT_MODE, privateKey, oaepParams);
-    byte[] decryptedBytes = cipher.doFinal(source);
-    return decryptedBytes;
+    return cipher.doFinal(source);
   }
 
   public static byte[] decryptAES(byte[] cipherText, SecretKey key, byte[] iv) {
@@ -53,8 +55,7 @@ public class CryptoCipher {
       Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
       SecretKeySpec keySpec = new SecretKeySpec(key.getEncoded(), "AES");
       cipher.init(Cipher.DECRYPT_MODE, keySpec, ivParameterSpec);
-      byte[] decryptedText = cipher.doFinal(cipherText);
-      return decryptedText;
+      return cipher.doFinal(cipherText);
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -63,13 +64,7 @@ public class CryptoCipher {
 
   public static SecretKey byteToSessionKey(byte[] sessionKey) {
     // rebuild key using SecretKeySpec
-    SecretKey originalKey = new SecretKeySpec(
-      sessionKey,
-      0,
-      sessionKey.length,
-      "AES"
-    );
-    return originalKey;
+    return new SecretKeySpec(sessionKey, 0, sessionKey.length, "AES");
   }
 
   private static PrivateKey readPkcs8PrivateKey(byte[] pkcs8Bytes)
@@ -137,7 +132,7 @@ public class CryptoCipher {
     throws GeneralSecurityException {
     // Base64 decode the result
 
-    String pkcs1Pem = private_key.toString();
+    String pkcs1Pem = private_key;
     pkcs1Pem = pkcs1Pem.replace("-----BEGIN RSA PRIVATE KEY-----", "");
     pkcs1Pem = pkcs1Pem.replace("-----END RSA PRIVATE KEY-----", "");
     pkcs1Pem = pkcs1Pem.replace("\\n", "");
@@ -149,5 +144,22 @@ public class CryptoCipher {
     );
     // extract the private key
     return readPkcs1PrivateKey(pkcs1EncodedBytes);
+  }
+
+  public static PublicKey stringToPublicKey(String publicKey) {
+    byte[] encoded = Base64.decode(publicKey, Base64.DEFAULT);
+
+    KeyFactory keyFactory = null;
+    try {
+      keyFactory = KeyFactory.getInstance("RSA");
+      X509EncodedKeySpec keySpec = new X509EncodedKeySpec(encoded);
+      return keyFactory.generatePublic(keySpec);
+    } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+      Log.i(
+        "Capacitor-updater",
+        "stringToPublicKey fail\nError:\n" + e.toString()
+      );
+      return null;
+    }
   }
 }

@@ -7,6 +7,7 @@
 import Foundation
 import Capacitor
 import Version
+import SwiftyRSA
 
 /**
  * Please read the Capacitor iOS Plugin Development Guide
@@ -15,14 +16,13 @@ import Version
 @objc(CapacitorUpdaterPlugin)
 public class CapacitorUpdaterPlugin: CAPPlugin {
     public var implementation = CapacitorUpdater()
-    private let PLUGIN_VERSION: String = "5.3.50"
+    private let PLUGIN_VERSION: String = "6.1.22"
     static let updateUrlDefault = "https://api.capgo.app/updates"
     static let statsUrlDefault = "https://api.capgo.app/stats"
     static let channelUrlDefault = "https://api.capgo.app/channel_self"
     let DELAY_CONDITION_PREFERENCES = ""
     private var updateUrl = ""
     private var statsUrl = ""
-    private var defaultPrivateKey = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpQIBAAKCAQEA4pW9olT0FBXXivRCzd3xcImlWZrqkwcF2xTkX/FwXmj9eh9H\nkBLrsQmfsC+PJisRXIOGq6a0z3bsGq6jBpp3/Jr9jiaW5VuPGaKeMaZZBRvi/N5f\nIMG3hZXSOcy0IYg+E1Q7RkYO1xq5GLHseqG+PXvJsNe4R8R/Bmd/ngq0xh/cvcrH\nHpXwO0Aj9tfprlb+rHaVV79EkVRWYPidOLnK1n0EFHFJ1d/MyDIp10TEGm2xHpf/\nBrlb1an8wXEuzoC0DgYaczgTjovwR+ewSGhSHJliQdM0Qa3o1iN87DldWtydImMs\nPjJ3DUwpsjAMRe5X8Et4+udFW2ciYnQo9H0CkwIDAQABAoIBAQCtjlMV/4qBxAU4\nu0ZcWA9yywwraX0aJ3v1xrfzQYV322Wk4Ea5dbSxA5UcqCE29DA1M824t1Wxv/6z\npWbcTP9xLuresnJMtmgTE7umfiubvTONy2sENT20hgDkIwcq1CfwOEm61zjQzPhQ\nkSB5AmEsyR/BZEsUNc+ygR6AWOUFB7tj4yMc32LOTWSbE/znnF2BkmlmnQykomG1\n2oVqM3lUFP7+m8ux1O7scO6IMts+Z/eFXjWfxpbebUSvSIR83GXPQZ34S/c0ehOg\nyHdmCSOel1r3VvInMe+30j54Jr+Ml/7Ee6axiwyE2e/bd85MsK9sVdp0OtelXaqA\nOZZqWvN5AoGBAP2Hn3lSq+a8GsDH726mHJw60xM0LPbVJTYbXsmQkg1tl3NKJTMM\nQqz41+5uys+phEgLHI9gVJ0r+HaGHXnJ4zewlFjsudstb/0nfctUvTqnhEhfNo9I\ny4kufVKPRF3sMEeo7CDVJs4GNBLycEyIBy6Mbv0VcO7VaZqggRwu4no9AoGBAOTK\n6NWYs1BWlkua2wmxexGOzehNGedInp0wGr2l4FDayWjkZLqvB+nNXUQ63NdHlSs4\nWB2Z1kQXZxVaI2tPYexGUKXEo2uFob63uflbuE029ovDXIIPFTPtGNdNXwhHT5a+\nPhmy3sMc+s2BSNM5qaNmfxQxhdd6gRU6oikE+c0PAoGAMn3cKNFqIt27hkFLUgIL\nGKIuf1iYy9/PNWNmEUaVj88PpopRtkTu0nwMpROzmH/uNFriKTvKHjMvnItBO4wV\nkHW+VadvrFL0Rrqituf9d7z8/1zXBNo+juePVe3qc7oiM2NVA4Tv4YAixtM5wkQl\nCgQ15nlqsGYYTg9BJ1e/CxECgYEAjEYPzO2reuUrjr0p8F59ev1YJ0YmTJRMk0ks\nC/yIdGo/tGzbiU3JB0LfHPcN8Xu07GPGOpfYM7U5gXDbaG6qNgfCaHAQVdr/mQPi\nJQ1kCQtay8QCkscWk9iZM1//lP7LwDtxraXqSCwbZSYP9VlUNZeg8EuQqNU2EUL6\nqzWexmcCgYEA0prUGNBacraTYEknB1CsbP36UPWsqFWOvevlz+uEC5JPxPuW5ZHh\nSQN7xl6+PHyjPBM7ttwPKyhgLOVTb3K7ex/PXnudojMUK5fh7vYfChVTSlx2p6r0\nDi58PdD+node08cJH+ie0Yphp7m+D4+R9XD0v0nEvnu4BtAW6DrJasw=\n-----END RSA PRIVATE KEY-----\n"
     private var backgroundTaskID: UIBackgroundTaskIdentifier = UIBackgroundTaskIdentifier.invalid
     private var currentVersionNative: Version = "0.0.0"
     private var autoUpdate = false
@@ -36,7 +36,15 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
     let semaphoreReady = DispatchSemaphore(value: 0)
 
     override public func load() {
+        #if targetEnvironment(simulator)
+            print("\(self.implementation.TAG) ::::: SIMULATOR :::::")
+            print("\(self.implementation.TAG) Application directory: \(NSHomeDirectory())")
+        #endif
+
         self.semaphoreUp()
+        self.implementation.deviceID = UserDefaults.standard.string(forKey: "appUUID") ?? UUID().uuidString
+        UserDefaults.standard.set( self.implementation.deviceID, forKey: "appUUID")
+        UserDefaults.standard.synchronize()
         print("\(self.implementation.TAG) init for device \(self.implementation.deviceID)")
         guard let versionName = getConfig().getString("version", Bundle.main.versionName) else {
             print("\(self.implementation.TAG) Cannot get version name")
@@ -64,8 +72,12 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
             periodCheckDelay = periodCheckDelayValue
         }
 
-        implementation.privateKey = getConfig().getString("privateKey", self.defaultPrivateKey)!
-        implementation.notifyDownload = notifyDownload
+        implementation.privateKey = getConfig().getString("privateKey", "")!
+        implementation.publicKey = getConfig().getString("publicKey", "")!
+        if !implementation.privateKey.isEmpty {
+            implementation.hasOldPrivateKeyPropertyInConfig = true
+        }
+        implementation.notifyDownloadRaw = notifyDownload
         implementation.PLUGIN_VERSION = self.PLUGIN_VERSION
         let config = (self.bridge?.viewController as? CAPBridgeViewController)?.instanceDescriptor().legacyConfig
         implementation.appId = Bundle.main.infoDictionary?["CFBundleIdentifier"] as? String ?? ""
@@ -77,6 +89,19 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
         print("\(self.implementation.TAG) appId \(implementation.appId)")
         implementation.statsUrl = getConfig().getString("statsUrl", CapacitorUpdaterPlugin.statsUrlDefault)!
         implementation.channelUrl = getConfig().getString("channelUrl", CapacitorUpdaterPlugin.channelUrlDefault)!
+        implementation.defaultChannel = getConfig().getString("defaultChannel", "")!
+        self.implementation.autoReset()
+
+        // Load the server
+        // This is very much swift specific, android does not do that
+        // In android we depend on the serverBasePath capacitor property
+        // In IOS we do not. Instead during the plugin initialization we try to call setServerBasePath
+        // The idea is to prevent having to store the bundle in 2 locations for hot reload and persisten storage
+        // According to martin it is not possible to use serverBasePath on ios in a way that allows us to store the bundle once
+
+        if !self.initialLoad() {
+            print("\(self.implementation.TAG) unable to force reload, the plugin might fallback to the builtin version")
+        }
         if resetWhenUpdate {
             self.cleanupObsoleteVersions()
         }
@@ -88,20 +113,35 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
         self.checkForUpdateAfterDelay()
     }
 
+    private func initialLoad() -> Bool {
+        guard let bridge = self.bridge else { return false }
+
+        let id = self.implementation.getCurrentBundleId()
+        let dest: URL
+        if BundleInfo.ID_BUILTIN == id {
+            dest = Bundle.main.resourceURL!.appendingPathComponent("public")
+        } else {
+            dest = self.implementation.getBundleDirectory(id: id)
+        }
+
+        print("\(self.implementation.TAG) Initial load \(id)")
+        // We don't use the viewcontroller here as it does not work during the initial load state
+        bridge.setServerBasePath(dest.path)
+        return true
+    }
+
     private func semaphoreWait(waitTime: Int) {
         print("\(self.implementation.TAG) semaphoreWait \(waitTime)")
         _ = semaphoreReady.wait(timeout: .now() + .milliseconds(waitTime))
     }
 
     private func semaphoreUp() {
-        print("\(self.implementation.TAG) semaphoreUp")
         DispatchQueue.global().async {
             self.semaphoreWait(waitTime: 0)
         }
     }
 
     private func semaphoreDown() {
-        print("\(self.implementation.TAG) semaphoreDown")
         semaphoreReady.signal()
     }
 
@@ -127,15 +167,60 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
         UserDefaults.standard.synchronize()
     }
 
-    @objc func notifyDownload(id: String, percent: Int) {
+    @objc func notifyDownload(id: String, percent: Int, ignoreMultipleOfTen: Bool = false) {
         let bundle = self.implementation.getBundleInfo(id: id)
         self.notifyListeners("download", data: ["percent": percent, "bundle": bundle.toJSON()])
         if percent == 100 {
             self.notifyListeners("downloadComplete", data: ["bundle": bundle.toJSON()])
             self.implementation.sendStats(action: "download_complete", versionName: bundle.getVersionName())
-        } else if percent.isMultiple(of: 10) {
+        } else if percent.isMultiple(of: 10) || ignoreMultipleOfTen {
             self.implementation.sendStats(action: "download_\(percent)", versionName: bundle.getVersionName())
         }
+    }
+
+    @objc func setUpdateUrl(_ call: CAPPluginCall) {
+        if !getConfig().getBoolean("allowModifyUrl", false) {
+            print("\(self.implementation.TAG) setUpdateUrl called without allowModifyUrl")
+            call.reject("setUpdateUrl called without allowModifyUrl set allowModifyUrl in your config to true to allow it")
+            return
+        }
+        guard let url = call.getString("url") else {
+            print("\(self.implementation.TAG) setUpdateUrl called without url")
+            call.reject("setUpdateUrl called without url")
+            return
+        }
+        self.updateUrl = url
+        call.resolve()
+    }
+
+    @objc func setStatsUrl(_ call: CAPPluginCall) {
+        if !getConfig().getBoolean("allowModifyUrl", false) {
+            print("\(self.implementation.TAG) setStatsUrl called without allowModifyUrl")
+            call.reject("setStatsUrl called without allowModifyUrl set allowModifyUrl in your config to true to allow it")
+            return
+        }
+        guard let url = call.getString("url") else {
+            print("\(self.implementation.TAG) setStatsUrl called without url")
+            call.reject("setStatsUrl called without url")
+            return
+        }
+        self.statsUrl = url
+        call.resolve()
+    }
+
+    @objc func setChannelUrl(_ call: CAPPluginCall) {
+        if !getConfig().getBoolean("allowModifyUrl", false) {
+            print("\(self.implementation.TAG) setChannelUrl called without allowModifyUrl")
+            call.reject("setChannelUrl called without allowModifyUrl set allowModifyUrl in your config to true to allow it")
+            return
+        }
+        guard let url = call.getString("url") else {
+            print("\(self.implementation.TAG) setChannelUrl called without url")
+            call.reject("setChannelUrl called without url")
+            return
+        }
+        self.implementation.channelUrl = url
+        call.resolve()
     }
 
     @objc func getBuiltinVersion(_ call: CAPPluginCall) {
@@ -161,14 +246,18 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
             call.reject("Download called without version")
             return
         }
+
         let sessionKey = call.getString("sessionKey", "")
-        let checksum = call.getString("checksum", "")
+        var checksum = call.getString("checksum", "")
         let url = URL(string: urlString)
         print("\(self.implementation.TAG) Downloading \(String(describing: url))")
         DispatchQueue.global(qos: .background).async {
             do {
                 let next = try self.implementation.download(url: url!, version: version, sessionKey: sessionKey)
-                if checksum != "" && next.getChecksum() != checksum {
+                if !self.implementation.hasOldPrivateKeyPropertyInConfig {
+                    checksum = try self.implementation.decryptChecksum(checksum: checksum, version: version)
+                }
+                if (checksum != "" || self.implementation.publicKey != "") && next.getChecksum() != checksum {
                     print("\(self.implementation.TAG) Error checksum", next.getChecksum(), checksum)
                     self.implementation.sendStats(action: "checksum_fail", versionName: next.getVersionName())
                     let id = next.getId()
@@ -177,14 +266,15 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
                         print("\(self.implementation.TAG) Delete failed, id \(id) doesn't exist")
                     }
                     throw ObjectSavableError.checksum
+                } else {
+                    print("\(self.implementation.TAG) Good checksum", next.getChecksum(), checksum)
                 }
                 self.notifyListeners("updateAvailable", data: ["bundle": next.toJSON()])
                 call.resolve(next.toJSON())
             } catch {
                 print("\(self.implementation.TAG) Failed to download from: \(String(describing: url)) \(error.localizedDescription)")
                 self.notifyListeners("downloadFailed", data: ["version": version])
-                let current: BundleInfo = self.implementation.getCurrentBundle()
-                self.implementation.sendStats(action: "download_fail", versionName: current.getVersionName())
+                self.implementation.sendStats(action: "download_fail")
                 call.reject("Failed to download from: \(url!)", error.localizedDescription)
             }
         }
@@ -198,7 +288,7 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
         if BundleInfo.ID_BUILTIN == id {
             dest = Bundle.main.resourceURL!.appendingPathComponent("public")
         } else {
-            dest = self.implementation.getPathHot(id: id)
+            dest = self.implementation.getBundleDirectory(id: id)
         }
         print("\(self.implementation.TAG) Reloading \(id)")
         if let vc = bridge.viewController as? CAPBridgeViewController {
@@ -442,15 +532,13 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
                     if !killed {
                         self._cancelDelay(source: "background check")
                     }
-                    break
-                case "kill":
+                    case "kill":
                     if killed {
                         self._cancelDelay(source: "kill check")
                         // instant install for kill action
                         self.installNext()
                     }
-                    break
-                case "date":
+                    case "date":
                     if value != nil && value != "" {
                         let dateFormatter = ISO8601DateFormatter()
                         dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -464,8 +552,7 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
                     } else {
                         self._cancelDelay(source: "delayVal absent")
                     }
-                    break
-                case "nativeVersion":
+                    case "nativeVersion":
                     if value != nil && value != "" {
                         do {
                             let versionLimit = try Version(value!)
@@ -478,7 +565,6 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
                     } else {
                         self._cancelDelay(source: "delayVal absent")
                     }
-                    break
                 case .none:
                     print("\(self.implementation.TAG) _checkCancelDelay switch case none error")
                 case .some:
@@ -542,11 +628,11 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
             let current = self.implementation.getCurrentBundle()
 
             if (res.message) != nil {
-                print("\(self.implementation.TAG) API response: \(res.message ?? "")")
+                print("\(self.implementation.TAG) API message: \(res.message ?? "")")
                 if res.major == true {
                     self.notifyListeners("majorAvailable", data: ["version": res.version])
                 }
-                self.endBackGroundTaskWithNotif(msg: res.message ?? "", latestVersionName: res.version, current: current, error: false)
+                self.endBackGroundTaskWithNotif(msg: res.message ?? "", latestVersionName: res.version, current: current, error: true)
                 return
             }
             let sessionKey = res.sessionKey ?? ""
@@ -581,6 +667,9 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
                         print("\(self.implementation.TAG) Latest version is in error state. Aborting update.")
                         self.endBackGroundTaskWithNotif(msg: "Latest version is in error state. Aborting update.", latestVersionName: latestVersionName, current: current)
                         return
+                    }
+                    if !self.implementation.hasOldPrivateKeyPropertyInConfig {
+                        res.checksum = try self.implementation.decryptChecksum(checksum: res.checksum, version: latestVersionName)
                     }
                     if res.checksum != "" && next.getChecksum() != res.checksum {
                         print("\(self.implementation.TAG) Error checksum", next.getChecksum(), res.checksum)
@@ -631,7 +720,7 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
             return DelayCondition(kind: kind, value: value)
         }
         if delayConditionList != nil && delayConditionList?.capacity != 0 {
-            print("\(self.implementation.TAG) Update delayed to next backgrounding")
+            print("\(self.implementation.TAG) Update delayed until delay conditions met")
             return
         }
         let current: BundleInfo = self.implementation.getCurrentBundle()
@@ -690,20 +779,21 @@ public class CapacitorUpdaterPlugin: CAPPlugin {
             return
         }
         let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(periodCheckDelay), repeats: true) { _ in
-            let res = self.implementation.getLatest(url: url)
-            let current = self.implementation.getCurrentBundle()
+            DispatchQueue.global(qos: .background).async {
+                let res = self.implementation.getLatest(url: url)
+                let current = self.implementation.getCurrentBundle()
 
-            if res.version != current.getVersionName() {
-                print("\(self.implementation.TAG) New version found: \(res.version)")
-                self.backgroundDownload()
+                if res.version != current.getVersionName() {
+                    print("\(self.implementation.TAG) New version found: \(res.version)")
+                    self.backgroundDownload()
+                }
             }
         }
         RunLoop.current.add(timer, forMode: .default)
     }
 
     @objc func appMovedToBackground() {
-        let current: BundleInfo = self.implementation.getCurrentBundle()
-        self.implementation.sendStats(action: "app_moved_to_background", versionName: current.getVersionName())
+        self.implementation.sendStats(action: "app_moved_to_background")
         print("\(self.implementation.TAG) Check for pending update")
         let delayUpdatePreferences = UserDefaults.standard.string(forKey: DELAY_CONDITION_PREFERENCES) ?? "[]"
 
